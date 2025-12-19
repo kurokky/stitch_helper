@@ -1,135 +1,175 @@
 #!/usr/bin/env python3
 import inkex
-from inkex import PathElement, Group, units
+from inkex import PathElement, Group, units, Rectangle
 from lxml import etree
 import math
 
 class CrossStitchMain(inkex.EffectExtension):
+    INKSTITCH_NS = "http://inkstitch.org/namespace"
+    SVG_NS = inkex.NSS['svg']
     def add_arguments(self, pars):
         pars.add_argument("--layer_mode", type=str, default="same")
 
     def effect(self):
-        self.generate_stitch()
+        self._setup_inkstitch_metadata()
 
-    def generate_stitch(self):
-        if not self.svg.selection:
-            inkex.errormsg("矩形を選択してください。")
+        source_layer, rects = self._get_source_rectangles()
+        if not rects:
+            inkex.errormsg("Please select some object.")
             return
-        # Ink/Stitchの名前空間URIを定義
-        INKSTITCH_NS = "http://inkstitch.org/namespace"
-        # nkexのNSS辞書に登録（lxmlにこのプレフィックスを使わせるため）
-        inkex.NSS['inkstitch'] = INKSTITCH_NS
+
+        # 元レイヤーを非表示
+        source_layer.style['display'] = 'none'
+
+        # 3. レイヤーモードの準備
+        layer_mode = self.options.layer_mode
+        base_layer = None
+        if layer_mode == "same":
+            base_layer = self.get_or_create_layer("cross_stitch_base")
+
+        # ストローク幅の計算
+        half_w = self.svg.unittouu('1px') / 2.0
+
+        # 4. 各矩形を処理
+        for node in rects:
+            self._process_single_rectangle(node, layer_mode, base_layer, half_w)
+
+        self.select_top_layer()
+
+    def _setup_inkstitch_metadata(self):
+        inkex.NSS['inkstitch'] = self.INKSTITCH_NS
+        
         if "inkstitch" not in self.svg.nsmap:
-            #強制的に属性を追加
-            self.svg.set('xmlns:inkstitch', INKSTITCH_NS)
-        
-        # add inkstitch version
-        SVG_NS = inkex.NSS['svg']
-        metadata = self.svg.find(f'{{{SVG_NS}}}metadata')
+            self.svg.set('xmlns:inkstitch', self.INKSTITCH_NS)
+
+        metadata = self.svg.find(f'{{{self.SVG_NS}}}metadata')
         if metadata is None:
-            metadata = etree.Element(f'{{{SVG_NS}}}metadata')
+            metadata = etree.Element(f'{{{self.SVG_NS}}}metadata')
             self.svg.insert(0, metadata)
-        target_tag_name = f'{{{INKSTITCH_NS}}}inkstitch_svg_version'
+
+        target_tag_name = f'{{{self.INKSTITCH_NS}}}inkstitch_svg_version'
         
+        # 既存のタグを削除して再作成
         for child in metadata.findall(target_tag_name):
             metadata.remove(child)
+        
         new_elem = etree.SubElement(metadata, target_tag_name)
         new_elem.text = "3"
 
-
-        layer_mode = self.options.layer_mode
-        base_layer = None
-
-        # 現在アクティブなレイヤー（矩形があるレイヤー）を取得
+    def _get_source_rectangles(self):
         source_layer = self.svg.get_current_layer()
-        # なければ最背面のレイヤーを取得
+        
         if source_layer is None:
             layers = [node for node in self.svg if isinstance(node, inkex.Layer)]
-            source_layer = layers[0]
-        #source_layer.style['opacity'] = '0.4'
-        source_layer.style['display'] = 'none'
+            if layers:
+                source_layer = layers[0]
 
-        if layer_mode == "same":
-            base_layer = "cross_stitch_base"
-            base_layer = self.get_or_create_layer(target_layer_name)
+        if source_layer is None:
+            return None, []
 
-        stroke_width_str = '1px'
-        w = self.svg.unittouu(stroke_width_str)
-        half_w = w / 2.0
+        rects = [node for node in source_layer if isinstance(node, Rectangle)]
+        return source_layer, rects
 
-        for node in self.svg.selection:
-            if isinstance(node, inkex.Rectangle):
-                
-                # --- 色の取得 ---
-                fill_color = node.style.get('fill')
-                is_alpha_gradient = (fill_color is not None) and ('url(#radialGradient_white_alpha' in fill_color)
-                if not fill_color or fill_color == 'none' or is_alpha_gradient :
-                    #fill_color = '#000000'
-                    continue
+    def _get_valid_fill_color(self, node):
+        fill = node.style.get('fill')
+        
+        # グラデーションチェック
+        is_gradient = (fill is not None) and (
+            'url(#radialGradient_white_alpha' in fill or 
+            'url(#linearGradient' in fill or 
+            'url(#mesh' in fill
+        )
 
-                # --- ターゲットレイヤーの決定 ---
-                target_layer = None
-                
-                if layer_mode == "separate":
-                    # 色ごとのレイヤーを作成/取得
-                    layer_name = f"stitch_{fill_color}"
-                    target_layer = self.get_or_create_layer(layer_name)
-                else:
-                    # 固定レイヤーを使用
-                    target_layer = base_layer
+        if not fill or fill == 'none' or is_gradient:
+            return None
+        return fill
 
-                # --- グループの作成 ---
-                group = Group()
-                target_layer.add(group)
-                
-                # --- 形状計算 (共通ロジック) ---
-                bbox = node.bounding_box()
-                x_min, x_max = bbox.left, bbox.right
-                y_min, y_max = bbox.top, bbox.bottom 
-                
-                rect_w = x_max - x_min
-                rect_h = y_max - y_min
-                diag_len = math.hypot(rect_w, rect_h)
-                
-                if diag_len == 0: continue
+    def _process_single_rectangle(self, node, layer_mode, base_layer, half_w):
+        """1つの矩形ノードに対する処理"""
+        fill_color = self._get_valid_fill_color(node)
+        if not fill_color:
+            return
 
-                # 切片計算 (はみ出し防止)
-                if rect_h == 0: x_offset = 0
-                else:           x_offset = half_w * diag_len / rect_h
-                
-                if rect_w == 0: y_offset = 0
-                else:           y_offset = half_w * diag_len / rect_w
+        # ターゲットレイヤーの決定
+        if layer_mode == "separate":
+            target_layer = self.get_or_create_layer(f"stitch_{fill_color}")
+        else:
+            target_layer = base_layer
 
-                p_bl = (x_min, y_max)
-                p_tr = (x_max, y_min)
+        # グループ作成
+        group = Group()
+        target_layer.add(group)
 
-                # レール生成
-                rail1 = [p_bl, (x_min, y_max - y_offset), (x_max - x_offset, y_min), p_tr]
-                rail2 = [p_tr, (x_max, y_min + y_offset), (x_min + x_offset, y_max), p_bl]
+        # パス計算と描画
+        self._create_stitch_paths(group, node, fill_color, half_w)
 
-                # 短いボーダー (長さ15%)
-                cx = (x_min + x_max) / 2.0
-                cy = (y_min + y_max) / 2.0
-                vx, vy = x_max - x_min, y_max - y_min
-                border_len = diag_len * 0.15
-                half_border = border_len / 2.0
-                ux, uy = vx / diag_len, vy / diag_len
-                
-                p_border_start = (cx - ux * half_border, cy - uy * half_border)
-                p_border_end   = (cx + ux * half_border, cy + uy * half_border)
-                border_route = [p_border_start, p_border_end]
+    def _create_stitch_paths(self, group, node, fill_color, half_w):
+        bbox = node.bounding_box()
+        x_min, x_max = bbox.left, bbox.right
+        y_min, y_max = bbox.top, bbox.bottom 
+        
+        rect_w = x_max - x_min
+        rect_h = y_max - y_min
+        diag_len = math.hypot(rect_w, rect_h)
+        
+        if diag_len == 0:
+            return
 
-                routes_original = [rail1, rail2, border_route]
+        # オフセット計算
+        x_offset = (half_w * diag_len / rect_h) if rect_h != 0 else 0
+        y_offset = (half_w * diag_len / rect_w) if rect_w != 0 else 0
 
-                # 反転データ
-                routes_flipped = []
-                for route in routes_original:
-                    flipped_route = [(2 * cx - p[0], p[1]) for p in route]
-                    routes_flipped.append(flipped_route)
+        p_bl = (x_min, y_max)
+        p_tr = (x_max, y_min)
 
-                # --- 描画実行 ---
-                self.draw_combined_path(INKSTITCH_NS, group, routes_original, fill_color)
-                self.draw_combined_path(INKSTITCH_NS, group, routes_flipped, fill_color)
+        # 基本パスの生成
+        rail1 = [p_bl, (x_min, y_max - y_offset), (x_max - x_offset, y_min), p_tr]
+        rail2 = [p_tr, (x_max, y_min + y_offset), (x_min + x_offset, y_max), p_bl]
+
+        # 短いボーダー (中心線)
+        cx = (x_min + x_max) / 2.0
+        cy = (y_min + y_max) / 2.0
+        
+        # 15%の長さを計算
+        half_border = (diag_len * 0.15) / 2.0
+        ux = (x_max - x_min) / diag_len
+        uy = (y_max - y_min) / diag_len
+        
+        border_route = [
+            (cx - ux * half_border, cy - uy * half_border),
+            (cx + ux * half_border, cy + uy * half_border)
+        ]
+
+        routes_original = [rail1, rail2, border_route]
+
+        # 反転データ生成 (X軸反転)
+        routes_flipped = []
+        for route in routes_original:
+            routes_flipped.append([(2 * cx - p[0], p[1]) for p in route])
+
+        # 描画実行
+        self.draw_combined_path(self.INKSTITCH_NS, group, routes_original, fill_color)
+        self.draw_combined_path(self.INKSTITCH_NS, group, routes_flipped, fill_color)
+
+
+    def get_rects(self):
+        """カレントレイヤーのRectを取得するヘルパー"""
+        layer = self.svg.get_current_layer()
+        return [node for node in layer if isinstance(node, Rectangle)]
+
+    def select_top_layer(self):
+        svg = self.svg
+        layers = []
+        for layer in self.svg.findall('svg:g'):
+            if layer.get('inkscape:groupmode') == 'layer':
+                layers.append(layer)
+
+        if not layers:
+            inkex.errormsg("レイヤーが見つかりませんでした。")
+            return
+        top_layer = layers[-1]
+        self.svg.selection.set(top_layer)
+
 
     def get_or_create_layer(self, layer_name):
         #male layer
