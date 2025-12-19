@@ -1,0 +1,23 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Embroidery Hoop"
+msgstr "刺繍枠を選ぶ"
+
+msgid "Create the Pattern from Pixel"
+msgstr "ドット絵から刺繍パターンを作成する"
+
+msgid "A single layer without separating colors"
+msgstr "1つのレイヤーに作成"
+
+msgid "By separating layers for each color"
+msgstr "色ごとにレイヤーを作成"
+
+msgid "About StitchHelper"
+msgstr "StitchHelperについて"
+
+msgid "For more detailed instructions, please visit the my website below."
+msgstr "詳しい使い方は以下の公式サイトをご覧ください。"
+

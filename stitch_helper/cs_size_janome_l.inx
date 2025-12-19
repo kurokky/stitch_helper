@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+<inkscape-extension translationdomain="stitch_helper" xmlns="http://www.inkscape.org/namespace/inkscape/extension">
     <name>L   (H20cm × W14cm)</name>
     <id>net.black-tree.cs.doc.janome.l</id>
     <dependency type="executable" location="extensions">doc_size.py</dependency>

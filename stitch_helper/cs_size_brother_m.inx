@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
-    <name>M   (W10cm × H10cm)</name>
+<inkscape-extension translationdomain="stitch_helper" xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+    <name>M   (H10cm × W10cm)</name>
     <id>net.black-tree.cs.doc.m</id>
     <dependency type="executable" location="extensions">doc_size.py</dependency>
     <param name="size_wh" type="string" gui-hidden="true">100,100</param>
