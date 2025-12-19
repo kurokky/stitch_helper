@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+    <name>L   (H24cm × W14cm)</name>
+    <id>net.black-tree.cs.doc.singer.l</id>
+    <dependency type="executable" location="extensions">doc_size.py</dependency>
+    <param name="size_wh" type="string" gui-hidden="true">240,140</param>
+    <effect>
+        <object-type>all</object-type>
+        <effects-menu>
+            <submenu name="StitchHelper">
+                <submenu  name="Embroidery Hoop"><submenu name="JUKI" /></submenu>
+            </submenu>
+        </effects-menu>
+    </effect>
+    <script>
+        <command location="inx" interpreter="python">doc_size.py</command>
+    </script>
+</inkscape-extension>
